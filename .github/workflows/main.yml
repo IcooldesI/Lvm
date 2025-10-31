@@ -14,23 +14,41 @@ jobs:
     - name: Download and Install Playit
       run: |
         Invoke-WebRequest -Uri "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe" -OutFile "$env:USERPROFILE\playit.exe"
-        Start-Sleep -Seconds 5  # Give some time for the download to complete
-        
-    # Default, optional.
-    - name: Enable TS
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
-    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-    - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "admin@123" -Force)
+        Start-Sleep -Seconds 5
+        Write-Host "✅ Playit agent downloaded successfully."
 
-    - name: www.toolboxlap.com
+    - name: Enable Remote Desktop (RDP)
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "admin@123" -Force)
+        Write-Host "✅ RDP Enabled. Use username 'runneradmin' and password 'admin@123'."
+
+    - name: Start Playit Tunnel with Auto-Restart
       env:
-        PLAYIT_AUTH_KEY: ${{ secrets.PL }} 
+        PLAYIT_AUTH_KEY: ${{ secrets.PL }}
       run: |
-        Start-Process -FilePath "$env:USERPROFILE\playit.exe" -ArgumentList "--secret $env:PLAYIT_AUTH_KEY" -NoNewWindow -Wait
-        Start-Process -FilePath "$env:USERPROFILE\playit.exe" -NoNewWindow
-    #  www.toolboxlap.com
-    # Prevent workflow to stop
-    - name: Keep the GitHub Action Runner Alive
+        Write-Host "🚀 Starting Playit tunnel with auto-restart..."
+        $PlayitPath = "$env:USERPROFILE\playit.exe"
+
+        while ($true) {
+          try {
+            Start-Process -FilePath $PlayitPath -ArgumentList "--secret $env:PLAYIT_AUTH_KEY" -WindowStyle Hidden
+            Write-Host "✅ Playit tunnel started. Check your Playit dashboard for IP and port."
+            Start-Sleep -Seconds 600  # Check every 10 min
+            if (-not (Get-Process playit -ErrorAction SilentlyContinue)) {
+              Write-Host "⚠️ Playit stopped unexpectedly. Restarting in 5 seconds..."
+              Start-Sleep -Seconds 5
+            }
+          } catch {
+            Write-Host "❌ Error running Playit: $_"
+            Start-Sleep -Seconds 10
+          }
+        }
+
+    - name: Keep GitHub Runner Alive for 6 Hours
       run: |
-          Start-Sleep -Seconds 21600  # Adjust the duration based on your needs
+        Write-Host "🕒 Keeping the RDP session alive for 6 hours..."
+        Start-Sleep -Seconds 21600
+        Write-Host "⏰ 6 hours completed — workflow ending now."
